@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Избранные</h2>
+                {% if favorites %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Тикет</th>
+                                <th>Тип актива</th>
+                                <th>Цена</th>
+                                <th>Дата добавления</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for favorite in favorites %}
+                            <tr>
+                                <td>{{ favorite.symbol }}</td>
+                                <td>{{ favorite.asset_type }}</td>
+                                <td id="price-{{ favorite.id }}">Loading...</td>
+                                <td>{{ favorite.added_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>
+                                    <button class="btn btn-primary btn-sm" onclick="showFavoriteChart('{{ favorite.symbol }}', '{{ favorite.asset_type }}', '{{ favorite.id }}')">График</button>
+                                    <button class="btn btn-danger btn-sm" onclick="removeFavorite('{{ favorite.id }}')">Удалить</button>
+                                    <div id="chart-{{ favorite.id }}" style="height: 350px; width: 100%; display: none; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; padding: 10px 10px 60px 10px;"></div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center">
+                    <p>У вас не добавленно ничего</p>
+                    <a href="/" class="btn btn-primary">Search Assets</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add this before the closing </div> of the card-body -->
+<div class="modal fade" id="notificationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Set Price Alert</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="notificationForm">
+                    <input type="hidden" id="notificationSymbol" name="symbol">
+                    <div class="mb-3">
+                        <label for="desiredPrice" class="form-label">Desired Price</label>
+                        <input type="number" step="0.01" class="form-control" id="desiredPrice" name="desired_price" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createNotification()">Set Alert</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+async function showFavoriteChart(symbol, assetType, favId) {
+    const chartDiv = document.getElementById(`chart-${favId}`);
+    
+    // Toggle chart visibility
+    if (chartDiv.style.display === 'block') {
+        chartDiv.style.display = 'none';
+        Plotly.purge(chartDiv); // Clear the chart when hiding
+        return;
+    }
+    
+    chartDiv.style.display = 'block';
+    try {
+        const resp = await fetch(`/history/${symbol}?asset_type=${assetType}`);
+        const data = await resp.json();
+        if (resp.ok && data.length > 0) {
+            const dates = data.map(d => d.date);
+            const closes = data.map(d => d.close);
+            Plotly.newPlot(chartDiv, [{
+                x: dates,
+                y: closes,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: {color: 'green'}
+            }], {
+                title: `${symbol} Last 30 Days`,
+                xaxis: {title: 'Date'},
+                yaxis: {title: 'Close Price'},
+                width: chartDiv.offsetWidth,
+                height: 350,
+                margin: { l: 50, r: 50, t: 50, b: 50 },
+                paper_bgcolor: 'white',
+                plot_bgcolor: 'white',
+                showlegend: false
+            });
+        } else {
+            chartDiv.innerHTML = 'No data available';
+        }
+    } catch (e) {
+        chartDiv.innerHTML = 'Error loading chart';
+    }
+}
+
+async function removeFavorite(favoriteId) {
+    if (!confirm('Вы уврены, что хотите удалить из избранного?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/favorites/${favoriteId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else if (response.status === 401) {
+            window.location.href = '/login?next=/favorites';
+        } else {
+            throw new Error('Failed to remove favorite');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error removing favorite');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // For each favorite, fetch and display the price
+    {% for favorite in favorites %}
+    fetch(`/search/{{ favorite.symbol }}?asset_type={{ favorite.asset_type }}`)
+        .then(resp => resp.json())
+        .then(data => {
+            let price = null;
+            if (data.price !== undefined) {
+                price = data.price;
+            } else if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                price = parseFloat(data['Global Quote']['05. price']);
+            } else if (data.rate) {
+                price = data.rate;
+            }
+            document.getElementById('price-{{ favorite.id }}').textContent = price !== null ? price.toFixed(2) : 'N/A';
+        })
+        .catch(() => {
+            document.getElementById('price-{{ favorite.id }}').textContent = 'N/A';
+        });
+    {% endfor %}
+});
+
+function showNotificationForm(symbol) {
+    document.getElementById('notificationSymbol').value = symbol;
+    const modal = new bootstrap.Modal(document.getElementById('notificationModal'));
+    modal.show();
+}
+
+async function createNotification() {
+    const symbol = document.getElementById('notificationSymbol').value;
+    const desiredPrice = document.getElementById('desiredPrice').value;
+
+    try {
+        const response = await fetch('/notifications', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                symbol: symbol,
+                desired_price: parseFloat(desiredPrice)
+            })
+        });
+
+        if (response.ok) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('notificationModal'));
+            modal.hide();
+            alert('Price alert set successfully!');
+        } else if (response.status === 401) {
+            window.location.href = '/login?next=/favorites';
+        } else {
+            throw new Error('Failed to create notification');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error setting price alert');
+    }
+}
+</script>
+{% endblock %}

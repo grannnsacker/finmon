@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Финансовый мониторинг</h2>
+                <div class="mb-3">
+                    <div class="input-group">
+                        <input type="text" id="symbol" class="form-control" placeholder="Введите тикет (например: AAPL, BTC)">
+                        <select id="assetType" class="form-select">
+                            <option value="stock">Ценные бумаги</option>
+                            <option value="crypto">Криптовалюты</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="searchAsset()">Поиск</button>
+                    </div>
+                </div>
+
+                <div id="result" class="mt-4" style="display: none;">
+                    <div class="card">
+                        <div class="card-body">
+                            <h4 class="asset-name mb-3"></h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p class="price mb-2"></p>
+                                    <p class="change mb-2"></p>
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    <button class="btn btn-success" onclick="addToFavorites()">Add to Favorites</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function searchAsset() {
+    const symbol = document.getElementById('symbol').value;
+    const assetType = document.getElementById('assetType').value;
+    const resultDiv = document.getElementById('result');
+    const chartDiv = document.getElementById('chart');
+
+
+    try {
+        const response = await fetch(`/search/${symbol}?asset_type=${assetType}`);
+        const data = await response.json();
+
+        if (response.ok) {
+            resultDiv.style.display = 'block';
+            const priceValue = parseFloat(data['price']);
+            document.querySelector('.asset-name').textContent = `${symbol}`;
+            document.querySelector('.price').textContent =  `Price: ${priceValue.toFixed(2)} ₽`;
+            // if (assetType === 'stock') {
+            //     const quote = data['Global Quote'];
+            //     if (quote) {
+            //         document.querySelector('.asset-name').textContent = `${symbol} Stock`;
+            //         document.querySelector('.price').textContent = `Price: $${parseFloat(quote['05. price']).toFixed(2)}`;
+            //         document.querySelector('.change').textContent = 
+            //             `Change: ${quote['09. change']} (${quote['10. change percent']})`;
+            //     } else {
+            //         resultDiv.style.display = 'none';
+            //         alert('No data found for this stock symbol');
+            //     }
+            // } else {
+            //     // Crypto handling
+            //     if (data.rate) {
+            //         document.querySelector('.asset-name').textContent = `${symbol}/USD`;
+            //         document.querySelector('.price').textContent = `Price: $${data.rate.toFixed(2)}`;
+            //         document.querySelector('.change').textContent = '';
+            //     } else {
+            //         resultDiv.style.display = 'none';
+            //         alert('No data found for this cryptocurrency');
+            //     }
+            // }
+        } else {
+            throw new Error(data.detail || 'Failed to fetch asset data');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error searching for asset');
+        resultDiv.style.display = 'none';
+    }
+}
+
+async function addToFavorites() {
+    const symbol = document.getElementById('symbol').value;
+    const assetType = document.getElementById('assetType').value;
+    
+    try {
+        const response = await fetch('/favorites/', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol: symbol,
+                asset_type: assetType
+            })
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+            return;
+        }
+        if (response.status === 409) {
+            aller("Актив уже добавлен");
+            return;
+        }
+
+        if (response.ok) {
+            alert('Успешо добавлено в избранные!');
+        } else {
+            throw new Error('Ошибка добавления');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Ошибка добавления');
+    }
+}
+</script>
+{% endblock %} 

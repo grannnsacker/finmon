@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-4">Профиль</h2>
+                <div class="mb-3">
+                    <label class="form-label">Имя пользователя</label>
+                    <p class="form-control-static">{{ user.username }}</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Почта</label>
+                    <p class="form-control-static">{{ user.email }}</p>
+                </div>
+                <div class="text-center mt-4">
+                    <a href="/favorites" class="btn btn-primary">Просмотреть избранные</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
